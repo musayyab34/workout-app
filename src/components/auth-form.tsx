@@ -5,8 +5,10 @@ import Link from "next/link";
 import { supabase, configured, callbackUrl } from "@/lib/supabase/client";
 export function AuthForm({
   mode,
+  initialMessage = "",
 }: {
   mode: "sign-in" | "sign-up" | "forgot-password" | "reset-password";
+  initialMessage?: string;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState(""),
@@ -142,7 +144,7 @@ export function AuthForm({
           )}
         </form>
       )}
-      {message && <p role="status">{message}</p>}
+      {(message || initialMessage) && <p role="status">{message || initialMessage}</p>}
       <div className="row wrap">
         <Link href="/auth/sign-in">Sign in</Link>
         <Link href="/auth/sign-up">Register</Link>

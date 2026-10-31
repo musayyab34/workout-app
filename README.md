@@ -51,6 +51,7 @@ Use your actual proxy/port. These settings are local development concerns, not V
 - Saved completed/partial history, calendars, program filters, capped fixed-target attainment, best sets, and comparable entry/set-count chart filtering.
 - Personal program creation/editing, ordered exercises/sets, mixed fixed/qualitative targets, instructions/notes, guidance, references, rest defaults, known/new movement identities, duplicate, archive/unarchive, and restore/view original mentor prescription.
 - Email/password signup/login, confirmation, resend, password recovery/reset, and cookie session refresh through Next.js Proxy.
+- Supabase's default email links work through code exchange; open them in the browser where you requested signup/reset. Customized token-hash links remain supported. Personal testing can use the built-in sender with your project-team email; custom SMTP is needed for normal delivery to friends.
 - Durable local upload queue, per-account isolated caches, server CAS, idempotent retries, deletion tombstones, paged pulls, explicit local/cloud conflicts, and account-safe asynchronous work.
 - Strict v1 reading and v2 export/import, local merge/replace with recovery, and reviewed atomic account merges using immutable staged chunks.
 

@@ -41,6 +41,8 @@ The application's configured origin must match the site being used. A `localhost
 
 ### Email template contract for Sol's implementation
 
+**Default-template support:** The app now also accepts Supabase's default confirmation/password-recovery links. For personal testing with the built-in sender, leave the existing templates unchanged and open links in the same browser where you requested them. Those links use a browser-bound authorization code. A confirmation opened elsewhere may require signing in manually afterward; for password recovery, request/open the link in the same browser. The customized token-hash links below remain supported when custom SMTP/template editing is configured. Custom SMTP is required for normal delivery to friends/non-team addresses, not merely for testing your own project-team email.
+
 This plan uses a server `/auth/confirm` route accepting `token_hash` and a fixed token `type`. The app passes the full allowed callback URL, `${NEXT_PUBLIC_APP_URL}/auth/confirm`, in both signup `emailRedirectTo` and reset-password `redirectTo`. It contains no query string. Configure these links in Authentication → Email Templates after Sol implements that route:
 
 **Confirm sign up**:
