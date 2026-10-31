@@ -1,12 +1,17 @@
 "use client";
+import { resolvedPrograms, personalProgramSchema } from "@/domain/programs";
+
 import Link from "next/link";
 import { useApp } from "@/features/workout/provider";
-import { programs, conditioningProgram } from "@/programs/catalog";
+import { conditioningProgram } from "@/programs/catalog";
 import { summarize, chronological } from "@/features/statistics";
 import { PageHeading, Icon, Badge, ActionLink, Empty } from "@/components/ui";
 import { Calendar, SessionRows } from "@/components/history";
 export default function Home() {
   const app = useApp();
+  const programs = resolvedPrograms(
+    (app.data.programs ?? []).map((p) => personalProgramSchema.parse(p)),
+  );
   const stats = summarize(app.data.sessions, {
     programId: conditioningProgram.id,
   });
@@ -118,7 +123,9 @@ export default function Home() {
       <section>
         <div className="section-head">
           <h2>Your programs</h2>
-          <small>Train with intention</small>
+          <Link className="text-link" href="/programs/new">
+            Create program
+          </Link>
         </div>
         <div className="program-grid">
           {programs.map((p, i) => (
@@ -134,20 +141,28 @@ export default function Home() {
                   />
                 </span>
                 <Badge tone={i === 0 ? "mint" : "muted"}>
-                  {i === 0 ? "Active" : "Coming soon"}
+                  {p.availability === "active" ? "Active" : "Coming soon"}
                 </Badge>
               </div>
               <h3>{p.name}</h3>
               <p>
                 {i === 0
-                  ? "Build strength and resilience before your running journey. Six movements. A solid foundation."
+                  ? "Build strength and resilience, at your pace."
                   : p.description}
               </p>
               <div className="program-footer">
                 <span>
-                  {i === 0 ? "6 exercises · 18 sets" : "A new chapter, ahead"}
+                  {p.availability === "active"
+                    ? p.templates[0].exercises.length +
+                      " exercises · " +
+                      p.templates[0].exercises.reduce(
+                        (n, e) => n + e.sets.length,
+                        0,
+                      ) +
+                      " sets"
+                    : "A new chapter, ahead"}
                 </span>
-                {i === 0 ? (
+                {p.availability === "active" ? (
                   <Link className="text-link" href={`/programs/${p.id}`}>
                     View program
                     <Icon size={15} />
@@ -160,6 +175,17 @@ export default function Home() {
           ))}
         </div>
       </section>
+      {(app.data.programs ?? [])
+        .map((p) => personalProgramSchema.parse(p))
+        .filter((p) => p.archived)
+        .map((p) => (
+          <p key={p.definition.id}>
+            Archived: {p.definition.name} ·{" "}
+            <Link href={"/programs/" + p.definition.id + "/edit"}>
+              Edit / unarchive
+            </Link>
+          </p>
+        ))}
       <div className="two-col">
         <section className="card">
           <div className="section-head">

@@ -1392,3 +1392,76 @@ dialog p {
     scroll-behavior: auto !important;
   }
 }
+
+.auth-card {
+  max-width: 560px;
+  margin: 24px auto;
+}
+.editor {
+  max-width: 800px;
+  margin: auto;
+}
+.editor button,
+.account-panel button {
+  min-height: 44px;
+}
+.set-editor {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.set-editor .field {
+  flex: 1;
+  min-width: 150px;
+}
+textarea {
+  min-height: 100px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  font: inherit;
+  max-width: 100%;
+}
+button {
+  cursor: pointer;
+}
+.conflict-json {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.stack > .card {
+  min-width: 0;
+}
+
+.editor button:not(.button),
+.account-panel button:not(.button) {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid #506173;
+  border-radius: 10px;
+  background: #1b2530;
+  color: #f3f6fa;
+  font-size: 14px;
+}
+.editor button:not(.button):hover,
+.account-panel button:not(.button):hover {
+  border-color: #72e0c3;
+}
+.editor input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}
+.editor .set-editor {
+  margin-block: 4px;
+}
+.editor textarea {
+  width: 100%;
+}

@@ -1,42 +1,38 @@
-# FORM — Personal Fitness & Training Tracker
+# FORM — Personal training, across your devices
 
-A mobile-first personal training website built with Next.js, React, TypeScript, Tailwind CSS, and browser-local IndexedDB. The implementation follows [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), which remains the product specification.
+FORM is a mobile-first Next.js, TypeScript and Tailwind workout tracker. Version 2 adds private Supabase accounts, synchronization of saved sessions/programs/preferences, and an editable program library. IndexedDB remains the durable recording layer. Unfinished workouts stay on their starting device.
 
 ## Run locally
 
-Use Node.js 24.15 or later in the 24.x LTS line and npm (verified with Node 24.15). Node 22.22.2+ in the 22.x line is also supported. The package engines reflect the minimum versions required by the test tooling.
+Use Node 24.x LTS (24.15 or newer), or supported Node 22.22.2+. Install and run in the same operating system:
 
 ```sh
-npm ci
+npm ci --include=optional
 npm run dev
 ```
 
-Open http://127.0.0.1:3000. Keep the same origin to retain access to the same local records. `localhost`, `127.0.0.1`, different ports, production domains, and deployment preview URLs each have separate storage.
+Open http://127.0.0.1:3000. With no Supabase environment configuration, local recording, programs, history, and backups remain usable. To connect cloud services, copy `.env.example` to `.env.local` and follow [the complete Supabase setup guide](implementation-plans/SUPABASE_SETUP.md).
 
-For a production build:
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY
+NEXT_PUBLIC_APP_URL=http://127.0.0.1:3000
+```
+
+Use your HTTPS production origin for the last value on Vercel. Never put a database password, secret/service-role API key, SMTP password, or personal access token in these variables. No privileged runtime key is required.
+
+For production locally:
 
 ```sh
 npm run build
 npm run start
 ```
 
-No environment variables, API keys, accounts, hosted database, or paid services are needed. The scripts bind to the loopback interface by default. For an intentional LAN preview use `npx next dev --hostname 0.0.0.0`; permit access only on a trusted network. Optional audio/browser features may require a secure browser context; a LAN HTTP preview is not a substitute for HTTPS mobile testing.
+### Windows, WSL, and VPNs
 
-### Windows and WSL development
+Next/SWC and Tailwind include native binaries. Do not share an installed `node_modules` or `.next` between Windows Node and Linux Node in WSL. After switching environments, stop servers and run `npm ci --include=optional` in the new environment. Keep the cross-platform lockfile. Separate working copies are preferable. This implementation was checked with Windows Node; reinstall inside WSL before running it there.
 
-Install dependencies in the environment that will run Next.js. Do not share an installed `node_modules` or `.next` cache between Windows Node and Linux Node in WSL: Next.js SWC, Tailwind, and other tools include native platform-specific binaries. The lockfile includes the required Windows and Linux optional packages; keep it.
-
-After switching the same working folder to WSL, stop development servers and run these commands **inside WSL**:
-
-```sh
-node -p "process.platform"  # should print linux
-npm ci --include=optional
-npm run dev
-```
-
-`npm ci` replaces the installed dependencies using the existing lockfile. If switching back to Windows in the same folder, reinstall there as well. Separate working copies are preferable when regularly using both environments. For WSL performance, a working copy in the Linux filesystem is recommended; moving the project is not required to fix a missing SWC binary.
-
-If a VPN/proxy causes npm registry timeouts, verify connectivity from WSL itself. Windows browser connectivity does not establish that Linux Node can reach the registry. Use the VPN's actual HTTP proxy address, and enable Node's environment-proxy support when needed. For example, with mirrored WSL networking and an HTTP proxy listening on Windows localhost port 17891:
+If npm times out behind a VPN, check connectivity from the actual shell. A Windows browser working does not prove Linux Node connectivity. Use your VPN's reachable HTTP proxy. An example previously verified with mirrored WSL networking was:
 
 ```sh
 HTTP_PROXY=http://127.0.0.1:17891 \
@@ -46,126 +42,88 @@ NO_PROXY=localhost,127.0.0.1 \
 npm ci --include=optional
 ```
 
-That proxy/port is an example verified on the development machine, not an application requirement. These variables apply only to this command and its children. Use your actual reachable proxy; localhost access differs under WSL NAT networking. Do not disable TLS certificate validation or delete the lockfile to work around a connection timeout. A telemetry notice is informational and is unrelated to compiler-binary installation failures.
+Use your actual proxy/port. These settings are local development concerns, not Vercel configuration. Do not disable TLS validation or delete the lockfile to fix a network timeout.
 
-References: [Next.js SWC troubleshooting](https://nextjs.org/docs/messages/failed-loading-swc), [WSL networking](https://learn.microsoft.com/en-us/windows/wsl/networking), [Node environment proxy support](https://nodejs.org/api/cli.html#node_use_env_proxy1).
+## What works
 
-## Included functionality
+- Exact bundled mentor program: Pogo Jumps, Calf Raises, Bodyweight Squats, Sit-Ups, Push-Ups, Tibialis Anterior Raises; three sets each. Sliding hamstring curls remain excluded. Fixed targets total 240; the last two movements use qualitative targets.
+- Blank actual-repetition entry, explicit zero vs skipped/missing, guided variable-length workouts, timestamp-based rest, pause, skip, end/review, corrections, and interruption recovery.
+- Saved completed/partial history, calendars, program filters, capped fixed-target attainment, best sets, and comparable entry/set-count chart filtering.
+- Personal program creation/editing, ordered exercises/sets, mixed fixed/qualitative targets, instructions/notes, guidance, references, rest defaults, known/new movement identities, duplicate, archive/unarchive, and restore/view original mentor prescription.
+- Email/password signup/login, confirmation, resend, password recovery/reset, and cookie session refresh through Next.js Proxy.
+- Durable local upload queue, per-account isolated caches, server CAS, idempotent retries, deletion tombstones, paged pulls, explicit local/cloud conflicts, and account-safe asynchronous work.
+- Strict v1 reading and v2 export/import, local merge/replace with recovery, and reviewed atomic account merges using immutable staged chunks.
 
-- Home with one active program and two clearly labeled Coming Soon programs.
-- Exact Beginner Running Conditioning prescription: Pogo Jumps, Calf Raises, Bodyweight Squats, Sit-Ups, Push-Ups, and Tibialis Anterior Raises, in that order, three sets each. Sliding hamstring curls are excluded.
-- Blank manual actual-repetition entry for every set. Numeric and qualitative prescribed targets remain distinct from actual performance.
-- Timestamp-based rest, skip, extension, exact duration, rest-only pause, whole-workout pause, early ending, and interruption recovery.
-- Review with set-status/repetition corrections and optional duration correction.
-- Completed/partial history, local activity calendar, individual session details, corrections, and confirmed deletion.
-- Program-specific statistics, weekly/monthly consistency, capped fixed-target attainment, exercise charts, personal records, and accessible chart data tables.
-- Versioned JSON backup, whole-file validation, merge conflicts, replacement, imported-draft pausing, and one atomic pre-import recovery snapshot.
-- Dark responsive UI, keyboard-accessible controls, modal focus management, reduced-motion support, and local-storage/error messages.
+The initial rest default is 90 seconds as an app setting. Start-screen choice overrides routine override, which overrides account preference. Custom programs do not inherit a made-up mentor schedule. Historical snapshots and active workouts retain their original exercise names, targets, instructions, order and timing when you edit a program.
 
-The initial routine has 18 sets and 240 numerically prescribed repetitions. Push-ups are submaximal; tibialis raises stop at muscular burning without pain or complete failure. Rest is **90 seconds as an app default**, adjustable from 0 to 900 seconds, and is not attributed to the mentor.
+## Data protection and synchronization
 
-The mentor's recovery guidance remains approximately three sessions weekly, never on consecutive days, with at least one recovery day. Recent positive-repetition activity triggers guidance before starting again. An explicit acknowledgment permits recording what the user actually chooses to do.
+Guest data is in `fitness-tracker-v2:local`. Account caches include both project hostname and user UUID. The original `fitness-tracker` v1 database is upgraded to version 2 to block old clients, then copied non-destructively into the guest workspace, including pre-import recovery. Its original record values remain intact. A migration marker prevents re-copying over newer guest data. A v1 code rollback cannot open that upgraded database; use the current app and exports instead of forcing a downgrade.
 
-## Commands
+Signing in does not upload guest records automatically. Export your existing log first, then select the file in Settings while signed into the intended account, review Merge, and confirm. Each friend has a separate account. Use the same account on your other devices. Migration verification requires checking cloud read-back and a second device, not only seeing an upload finish.
 
-| Command              | Purpose                                                          |
-| -------------------- | ---------------------------------------------------------------- |
-| `npm run dev`        | Local development server                                         |
-| `npm run build`      | Optimized production build                                       |
-| `npm run start`      | Serve the existing production build                              |
-| `npm run typecheck`  | Strict TypeScript check                                          |
-| `npm run lint`       | Explicit ESLint check                                            |
-| `npm test`           | Domain, statistics, controller, screen, and storage/backup tests |
-| `npm run test:watch` | Watch unit/integration tests                                     |
-| `npm run test:e2e`   | Playwright against the production build                          |
+Saved sessions, personal definitions, and preferences synchronize while the app is open. Unfinished workouts, editor scratch forms, and local recovery copies do not move between devices. Recording continues locally during an outage on an already loaded page. Offline reloading and background uploads while the app is closed are not promised.
 
-Run `npm run build` before E2E. Playwright starts/stops the production server if one is not already running. It uses installed Google Chrome by default, avoiding a separate browser download. For managed Chromium, install it with `npx playwright install chromium` and set `PLAYWRIGHT_CHANNEL=chromium`; other Playwright-supported installed channels may be selected similarly. On PowerShell, set a test-specific environment variable before the command, for example `$env:PLAYWRIGHT_CHANNEL = 'chrome'`.
+Settings shows pending uploads, last successful sync, failures, and conflicts. A write is Synced only after acknowledgement and a completed pull. Both sides of conflicts remain preserved. Use cloud records a local recovery alternative before discarding your pending version. Keep my version sends a new revision-checked mutation. Conflicts never create a duplicate workout automatically. A pending deletion is hidden from normal totals but preserved for recovery/export.
 
-## Data and recovery
+Signed-out account data stays recoverable in its local namespace; the app hides it until that account is selected again. Browser storage is not encrypted. Someone with access to the browser profile/developer tools may inspect it. Browser eviction, disk failure, private browsing, or clearing site data can remove drafts and unsynced records. A different origin/browser profile has separate local storage. Keep independent downloaded backups.
 
-Records live in IndexedDB database `fitness-tracker`, schema version 1. Stores are `sessions`, `drafts`, `preferences`, `metadata`, and `recovery`. Every user-data mutation checks a dataset revision in the same transaction. A stale tab loads the latest saved state and asks the user to review it; it does not automatically replay old commands.
+## Backups and account imports
 
-Confirmed actions are saved before the UI advances. Unconfirmed input autosaves after about 300 ms and flushes on blur or controlled departure. The newest unconfirmed keystrokes can be lost in abrupt termination. Autosaves join the same serialized queue as confirmed actions without disabling the submit button during blur.
+Export includes this device's visible history, programs, preferences, optional draft, unresolved conflict alternatives, and pending-delete recovery payloads. It excludes credentials, trusted owner IDs, server coordination state, and old upload commands. It cannot include another device's unsynced workout or draft. Complete a successful pull before treating an export as a full account snapshot.
 
-At most one unfinished workout exists. It survives reloads when browser storage is intact. Local interruption does not automatically pause a running workout, so unpaused time away counts in elapsed duration. An imported draft is different: it is paused at the backup's export timestamp, with remaining rest captured at that time. Time spent between export and restoration is excluded after resume.
+Version 1 files remain supported. Version 2 contains programs and typed recovery alternatives with counts. Invalid/newer/inconsistent files are refused. Files above 25 MiB receive a processing caution rather than automatic rejection.
 
-An all-sets-recorded session is completed in a logging sense, regardless of whether targets were reached. A zero is an explicit result; a skip is missing performance and stores null. Partial sessions contribute actual recorded repetitions but do not increase completed-workout counts. Fixed-target attainment caps each set separately and excludes qualitative targets.
+Guest mode supports merge and replacement, with one atomic pre-import recovery copy. Account mode supports reviewed merge; absent records do not imply deletion. Restoring deleted account sessions from an old backup requires explicit opt-in. Different imported program definitions default to the existing program and preserve the incoming definition as a quarantined recovery alternative in Account & synchronization, where it can be inspected/exported/adopted explicitly. This is the implementation's alternative to a second inline program-conflict selector.
 
-### Backup workflow
+Account merges write a durable local journal/recovery copy before staging. Each chunk is immutable, owner-scoped, checksummed and idempotent. Fully assembled documents are validated into private staging; the final transaction rechecks ownership, completeness, account/entity revisions and identity constraints, then applies all changes or none. A lost response resumes the same batch. Settings provides Resume interrupted account import and Cancel uncommitted import; cancellation checks the server outcome first. A committed account import cannot be reversed with a local-only undo.
 
-1. Open Settings and Export backup.
-2. Save the downloaded JSON somewhere recoverable, preferably away from the same device.
-3. On another browser/origin, select the file under Import a backup.
-4. Review mode, counts, preferences, conflicting records, and unfinished-session choice.
-5. Confirm merge or replacement.
+The private real backup under `.private/backups/` passed existing schema/semantic validation and a local v2 round-trip field comparison. Its contents are excluded from Git and the bundle. It has not been uploaded, and actual account/second-device verification remains for the owner after setup.
 
-Validation occurs before import mutations. Preparing a valid import preview pauses a running local draft; canceling leaves it safely paused. Merge adds new IDs, leaves equivalent sessions unchanged, and defaults conflicting IDs to the local result. Conflicts can explicitly use the imported result. Preferences stay local unless selected. Replacement adopts the imported records/preferences and selected imported draft.
+## Database architecture
 
-Imports save one pre-import recovery copy and apply data in one transaction. Any failure, including quota exhaustion while saving that copy, aborts the transaction. Settings can restore the latest pre-import copy; restoration replaces later changes and consumes the copy after success. This is not an unlimited undo history.
+Migrations are under `supabase/migrations/`. Owner-scoped public tables have RLS and authenticated read-only grants. Writes use restricted RPCs. Definer helpers need elevated table access because direct browser writes are revoked; they fix `search_path`, qualify objects and derive/check ownership from `auth.uid()`. Anonymous access and cross-account access are denied. No client owner field can grant permission to another account.
 
-Malformed, incompatible, and semantically inconsistent backups are refused without partial imports. Newer unsupported formats require an app update. There are no invented older-version migrations in version 1. A file over 25 MiB requires confirmation before processing; that is a caution threshold, not a hard rejection limit.
+Account change versions are allocated under a per-owner row lock. Stable paged reads validate a fixed high-water version before advancing the local cursor. Server versions travel as decimal strings. Mutation receipts and tombstones are retained so old offline clients cannot silently resurrect deleted data. Normal recordings save domain data plus outbox entries atomically; draft/timer writes stay local.
 
-When damaged or unsupported local records prevent normal loading, the app offers a raw recovery export without automatically deleting data. Raw exports are diagnostic rescue files, not ordinary validated backups; repairing them requires inspecting the underlying issue.
+SQL JSON schema documents are generated from the shared Zod models, supplemented by PostgreSQL semantic checks. The embedded SQL test runner executes actual PostgreSQL permissions, constraints, functions and transactions. Its auth identity function substitutes for Supabase's JWT-to-database integration; it does not test Supabase's hosted Auth or PostgREST services.
 
-### Local-storage limitations
+Main code boundaries:
 
-Clearing site data, private browsing, browser eviction, profile removal, device loss, or disk/OS failure can remove records. Different browser profiles and devices do not synchronize. Download initiation does not prove a file was saved. Local recovery snapshots share the same device risks. There is no authentication or automatic cloud upload, and sharing the website URL does not share workout history.
+- `src/domain`: schemas, invariants, personal definitions.
+- `src/features/workout`: pure engine and durable command provider.
+- `src/lib/storage`: IndexedDB, workspace selection, migration, transaction/outbox operations.
+- `src/features/sync`: remote protocol, conflicts, staged merge journal.
+- `src/lib/supabase`, `src/proxy.ts`, `src/features/auth`: clients, token refresh, account lifecycle.
+- `src/lib/backup`: versioned validation, previews, exports, recovery.
+- `src/features/statistics`: derived metrics and calendar arithmetic.
 
-## Timing and browser limits
+## Verification commands
 
-Rest uses a persisted deadline and recalculates from the current timestamp; intervals only redraw the display. Whole-workout pauses are subtracted from elapsed duration. Rest-only pause does not pause overall duration, and review time is excluded.
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run test:db
+npm run test:db:large
+npm run build
+npm run test:e2e
+```
 
-Background tabs and locked screens may suspend JavaScript, sound, and vibration. On return, the timer reconciles and waits for the user before starting the next set. No background alarms, operating-system notifications, or offline reloading are promised. Sound/vibration are optional and off by default; support and device settings vary.
+Run browser suites sequentially because they share the output directory. Playwright uses installed Google Chrome by default. Alternatively install managed Chromium (`npx playwright install chromium`) and set `PLAYWRIGHT_CHANNEL=chromium`. The E2E server uses the production build and starts automatically when port 3000 is free. Avoid rebuilding underneath a running production test server.
 
-Wall-clock changes can affect timing. Impossible negative durations are not silently saved; correct the device clock and retry. Review/history support explicit duration correction while preserving the original calculated value. The app does not estimate active exercise time.
+Verified during implementation on 31 October 2026: typecheck, lint, 85 unit/integration/component tests across nine files, production build, and 15 Chrome production-browser workflows. The workflows cover exact full/partial workouts, interruption, correction, backup/conflicts/recovery, two-tab stale writes, the custom editor driving a real workout while preserving prior history, local auth fallback, and 320/390/768/1440 px layouts. The browser suite imported and displayed 5,000 sessions/90,000 sets. Embedded PostgreSQL tests cover RLS, anonymous denial, owner spoofing, CAS, retry receipts, tombstones, staged import and immutable snapshot enforcement. Sync integration tests exercise offline/lost-response recovery, competing corrections, in-flight successors and workspace switches using the actual SQL functions through a simulated SDK transport.
 
-## Architecture
+### Remaining verification and limits
 
-- `src/programs`: immutable catalog and exact mentor prescription.
-- `src/domain`: Zod schemas, inferred types, and semantic invariants.
-- `src/features/workout/machine.ts`: pure transitions and corrections, driven by explicit time values.
-- `src/features/workout/provider.tsx`: durable command queue, tagged/debounced input, lifecycle refresh, errors, and optimistic-concurrency handling.
-- `src/features/workout/timer.ts`: countdown/elapsed calculations; `alerts.ts`: optional feature-detected alerts.
-- `src/lib/storage`: IndexedDB connection and transactional application repository.
-- `src/lib/backup`: envelope validation, equivalent-record comparison, previews, atomic imports, downloads.
-- `src/features/statistics`: pure metric selectors and calendar-date arithmetic.
-- `src/components`: accessible shared controls, charts, calendar, and session review/detail.
-- `src/app`: App Router routes with browser data loaded after hydration.
-- `tests`: meaningful domain, integration, and browser workflows.
+The local Supabase CLI was initialized, but Docker and Podman are unavailable on this machine. No hosted project or credentials were supplied/changed. Consequently live Supabase Auth, SMTP delivery, JWT/PostgREST integration, real HTTP request limits/timeouts, two real signed-in devices and the private owner's cloud migration have **not** been verified. Do not describe this as a completed cloud rollout. Run those checks against a disposable local/development Supabase stack before enabling production sync. Real iOS/Android hardware, physical alerts and assistive-technology testing also remain manual checks.
 
-Runtime dependencies beyond Next/React are only idb and Zod. Charts are small SVG components with data tables. No ORM, state framework, date library, chart library, external font, or icon package is needed. Test packages are development-only. Versions are pinned and the npm lockfile is retained.
+Large SQL tests use a slower embedded PostgreSQL engine. Staging validates each document independently; final commit uses immutable privately validated items. Actual Supabase HTTP timing and provider quotas still require testing. Resource/timeouts must preserve the source and atomic outcome; do not disable global timeouts. The batch advances the account counter once per changed entity within one locked transaction rather than assigning a single version to all entities; fixed-head pagination remains consistent because the whole transaction commits together.
 
-Snapshot-based sessions preserve exercise names, instructions, order, targets, and program/template versions. Adding another repetition-based program primarily requires a validated definition and catalog availability change. Unknown historical programs can be displayed from imported snapshots without becoming executable catalog programs. New recording kinds require explicit schemas, inputs, analytics, and backup compatibility.
+Ordinary browser timer limits still apply: rest deadlines reconcile when returning from background, but OS-level alarms/sound/vibration are not guaranteed. Explicit whole-workout pauses exclude time; other unpaused away time counts and can be corrected in Review. Charts count saved sessions, never drafts; zero differs from missing. No consecutive-day streak incentives, automatic progression, PWA, social features, paid APIs or deployment are added.
 
-The repository boundary prepares for future cloud persistence without pretending to implement synchronization now. Future sync still needs identity, authorization, ownership, conflict policy, and deletion handling; local revision counters are not a distributed protocol.
+## Supabase and Vercel activation
 
-## Verification and limits
+Follow [SUPABASE_SETUP.md](implementation-plans/SUPABASE_SETUP.md): create a separate development environment, enable email confirmation/custom SMTP, configure callback URLs/templates, apply the reviewed migrations, set the three environment variables, and test. Deploy only when you choose, then perform the reviewed import and second-device verification. Vercel does not apply migrations automatically. Never disable RLS to fix setup errors.
 
-Verified on 2026-10-29 with Node 24.15 and production Next.js:
-
-| Check | Result |
-|---|---|
-| Strict TypeScript | Passed |
-| ESLint | Passed |
-| Unit/integration/component tests | 80 passed across 7 files |
-| Production build | Passed |
-| Chrome production E2E | 13 passed |
-| Responsive overflow checks | Passed at 320, 390, 768, and 1,440 CSS pixels |
-| Large browser dataset | Imported 5,000 sessions / 90,000 sets; history and all-time chart verified |
-| Browser runtime/hydration monitoring | No errors in the tested primary workflows |
-
-The E2E suite covers the full 18-set prescription, interrupted sessions, corrections, backup downloads into a fresh browser context, duplicate merges, invalid files, conflict resolution, replacement/recovery, paused draft restoration, and a stale action from a second tab. Desktop Home and mobile workout screenshots were visually reviewed; test screenshots are generated under the ignored `test-results/` directory.
-
-The release checks cover exact mentor order/targets, zero versus missing results, full/partial workflows, timer pauses and interruption, input-save races/retries, stale writes, corruption, quota rollback, import conflicts, paused restoration, and statistics date boundaries. A 5,000-session/90,000-set fixture exercises statistics performance.
-
-Browser tests use production Next.js and Chrome, including mobile-sized viewports. Real iOS/Android hardware, screen locking, physical vibration/audio behavior, and assistive-technology interaction cannot be fully validated by desktop automation. These require device testing before relying on alerts in practice. Browser viewport tests are not represented as physical-device verification.
-
-No product-scope deviations are intended. Related UI helpers are combined where that keeps the small application clear rather than creating every suggested folder. A normal Next.js deployment is used rather than static export. Advanced charts, automated backup reminders, storage-permission prompts, accounts, cloud sync, custom programs, and additional exercise types remain deferred as specified.
-
-## Deployment and maintenance
-
-No deployment, Git commit, or push is performed by implementation alone. When authorized, connect the repository to Vercel, choose its Next.js preset and a supported Node LTS, and run the complete release gate. No application secrets are required. The personal/noncommercial use case fits the intended Vercel Hobby scope; verify its current terms and quotas before publishing.
-
-Use a stable production hostname. A domain change requires export from the old origin and import on the new one. Preview deployments have separate data. Verify direct routes, a workout, persistence, and backup restoration on production after deployment.
-
-Keep stable dependencies patched. Database schema, backup format, and prescription versions are independent. Test real migrations with old backup fixtures before shipping them. A code rollback does not undo a data migration, so do not assume an older release can read newer records.
+The original [v1 plan](implementation-plans/IMPLEMENTATION_PLAN.md) and reviewed [v2 plan](implementation-plans/VERSION_2_IMPLEMENTATION_PLAN.md) remain the product specifications. No commit, push, deployment, hosted migration or personal-data upload is performed by this implementation task.

@@ -1,3 +1,6 @@
+import { accountWorkspace, workspaceGeneration } from "./db";
+import { canonical, emptySync, type SyncState } from "@/features/sync/model";
+import { personalProgramSchema } from "@/domain/programs";
 import type { IDBPTransaction } from "idb";
 import {
   defaultPreferences,
@@ -49,7 +52,9 @@ export class StoredDataError extends Error {
 }
 
 function validated(value: unknown): Dataset {
-  return validateDataset(value);
+  const d = validateDataset(value);
+  for (const p of d.programs ?? []) personalProgramSchema.parse(p);
+  return d;
 }
 
 async function readData(tx: DataTransaction): Promise<Dataset> {
@@ -68,6 +73,16 @@ async function readData(tx: DataTransaction): Promise<Dataset> {
       sessions,
       draft: draft ?? null,
       preferences: preferences ?? defaultPreferences,
+      ...((await tx.objectStore("metadata").get("programs"))
+        ? { programs: await tx.objectStore("metadata").get("programs") }
+        : {}),
+      ...((await tx.objectStore("metadata").get("recoveryCandidates"))
+        ? {
+            recoveryCandidates: await tx
+              .objectStore("metadata")
+              .get("recoveryCandidates"),
+          }
+        : {}),
     });
   } catch (error) {
     throw new StoredDataError(
@@ -81,6 +96,11 @@ async function writeData(
   current: Dataset,
   next: Dataset,
 ): Promise<void> {
+  for (const p of next.programs ?? []) personalProgramSchema.parse(p);
+  await tx.objectStore("metadata").put(next.programs ?? [], "programs");
+  await tx
+    .objectStore("metadata")
+    .put(next.recoveryCandidates ?? [], "recoveryCandidates");
   const sessionStore = tx.objectStore("sessions");
   const previous = new Map(
     current.sessions.map((session) => [session.id, session]),
@@ -122,16 +142,42 @@ export async function loadDataset(): Promise<Dataset> {
 export async function mutateDataset(
   expectedRevision: number,
   updater: (current: Dataset) => Dataset,
+  remote = false,
+  updateSync?: (state: SyncState) => void,
+  expectedWorkspace = workspaceGeneration,
 ): Promise<Dataset> {
+  if (expectedWorkspace !== workspaceGeneration)
+    throw new Error("Workspace changed");
+  const isAccount = accountWorkspace;
   const db = await openFitnessDatabase();
+  if (expectedWorkspace !== workspaceGeneration)
+    throw new Error("Workspace changed");
   const tx = db.transaction([...DATA_STORES], "readwrite");
   try {
     const current = await readData(tx);
+    if (
+      isAccount &&
+      !remote &&
+      (await tx.objectStore("metadata").get("cloudImport"))
+    )
+      throw new Error(
+        "Resume the pending account import before changing this workspace.",
+      );
     if (current.revision !== expectedRevision) throw new StaleRevisionError();
     const result = updater(structuredClone(current));
     const next = validated({ ...result, revision: current.revision + 1 });
+    if (isAccount) {
+      const state =
+        ((await tx.objectStore("metadata").get("sync")) as
+          SyncState | undefined) ?? emptySync();
+      if (!remote) enqueueChanges(state, current, next);
+      updateSync?.(state);
+      await tx.objectStore("metadata").put(state, "sync");
+    }
     await writeData(tx, current, next);
     await tx.done;
+    if (isAccount && !remote && typeof window !== "undefined")
+      window.dispatchEvent(new Event("form-local-change"));
     return next;
   } catch (error) {
     try {
@@ -241,6 +287,10 @@ export async function replaceWithRecovery(
   candidate: Dataset,
   capturedAt = new Date().toISOString(),
 ): Promise<Dataset> {
+  if (accountWorkspace)
+    throw new Error(
+      "Account imports require the reviewed cloud merge. Use Account → Import to account.",
+    );
   const proposed = validated(candidate);
   const db = await openFitnessDatabase();
   const tx = db.transaction([...DATA_STORES], "readwrite");
@@ -276,6 +326,10 @@ export async function replaceWithRecovery(
 export async function restoreRecovery(
   expectedRevision: number,
 ): Promise<Dataset> {
+  if (accountWorkspace)
+    throw new Error(
+      "Export recovery and use a reviewed account merge; cloud replacement is unavailable.",
+    );
   const db = await openFitnessDatabase();
   const tx = db.transaction([...DATA_STORES], "readwrite");
   try {
@@ -314,4 +368,127 @@ export async function getLastExportRequest(): Promise<string | null> {
   const db = await openFitnessDatabase();
   const value = await db.get("metadata", "lastExportRequest");
   return typeof value === "string" ? value : null;
+}
+
+function entities(d: Dataset): Record<string, unknown> {
+  return Object.fromEntries([
+    ...d.sessions.map((s) => ["session:" + s.id, s] as const),
+    ...(d.programs ?? []).map((p) => {
+      const x = personalProgramSchema.parse(p);
+      return ["program:" + x.definition.id, x] as const;
+    }),
+    ["preferences:main", d.preferences],
+  ]);
+}
+function enqueueChanges(state: SyncState, before: Dataset, after: Dataset) {
+  const a = entities(before),
+    b = entities(after);
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (canonical(a[key] ?? null) === canonical(b[key] ?? null)) continue;
+    const pending = state.pending.filter((p) => p.key === key);
+    if (
+      b[key] === undefined &&
+      !state.bases[key] &&
+      pending.every((p) => !p.request)
+    ) {
+      state.pending = state.pending.filter((p) => p.key !== key);
+      continue;
+    }
+    const last = pending.at(-1);
+    if (last && !last.request) last.payload = b[key] ?? null;
+    else state.pending.push({ key, payload: b[key] ?? null });
+  }
+}
+export async function readSync(): Promise<SyncState> {
+  return (
+    ((await (await openFitnessDatabase()).get("metadata", "sync")) as
+      SyncState | undefined) ?? emptySync()
+  );
+}
+export async function syncEdit(
+  edit: (d: Dataset, s: SyncState) => Dataset,
+): Promise<Dataset> {
+  const generation = workspaceGeneration;
+  const d = await loadDataset();
+  const state = await readSync();
+  return mutateDataset(
+    d.revision,
+    (current) => edit(current, state),
+    true,
+    (s) => {
+      Object.assign(s, state);
+    },
+    generation,
+  );
+}
+export function setEntity(
+  d: Dataset,
+  key: string,
+  payload: unknown | null,
+): Dataset {
+  const [kind, ...ids] = key.split(":");
+  const id = ids.join(":");
+  if (kind === "session")
+    return {
+      ...d,
+      sessions: [
+        ...d.sessions.filter((s) => s.id !== id),
+        ...(payload ? [payload as Session] : []),
+      ],
+    };
+  if (kind === "program")
+    return {
+      ...d,
+      programs: [
+        ...(d.programs ?? []).filter(
+          (p) => personalProgramSchema.parse(p).definition.id !== id,
+        ),
+        ...(payload ? [personalProgramSchema.parse(payload)] : []),
+      ],
+    };
+  if (!payload) throw new Error("Preferences cannot be deleted");
+  return { ...d, preferences: payload as Preferences };
+}
+export function saveProgram(expected: number, value: unknown) {
+  const p = personalProgramSchema.parse(value);
+  return mutateDataset(expected, (d) => ({
+    ...d,
+    programs: [
+      ...(d.programs ?? []).filter(
+        (x) => personalProgramSchema.parse(x).definition.id !== p.definition.id,
+      ),
+      p,
+    ],
+  }));
+}
+
+export async function loadExportDataset(): Promise<Dataset> {
+  const db = await openFitnessDatabase();
+  const tx = db.transaction([...DATA_STORES], "readonly");
+  const d = await readData(tx);
+  const s = (await tx.objectStore("metadata").get("sync")) as
+    SyncState | undefined;
+  await tx.done;
+  if (!s) return d;
+  const candidates = [
+    ...(d.recoveryCandidates ?? []),
+    ...Object.values(s.conflicts).map((c) => ({
+      key: c.key,
+      local: c.local,
+      remote: c.remote.payload,
+    })),
+    ...s.pending
+      .filter((p) => p.payload === null)
+      .map((p) => ({
+        key: p.key,
+        local: s.bases[p.key]?.payload ?? null,
+        remote: null,
+      })),
+  ];
+  return {
+    ...d,
+    recoveryCandidates: Array.from(
+      new Map(candidates.map((c) => [canonical(c), c])).values(),
+    ),
+  };
 }

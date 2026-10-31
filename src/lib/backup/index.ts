@@ -1,3 +1,5 @@
+import { personalProgramSchema } from "@/domain/programs";
+import { canonical as canonicalContent } from "@/features/sync/model";
 import { z } from "zod";
 import {
   draftSchema,
@@ -8,18 +10,33 @@ import {
   type Draft,
   type Session,
 } from "@/domain/schemas";
-import { assertDataset } from "@/domain/invariants";
+import { assertDataset,assertSession } from "@/domain/invariants";
 import { freezeDraftAt } from "@/features/workout/machine";
-import { loadDataset, replaceWithRecovery } from "@/lib/storage/repository";
+import {
+  loadExportDataset,
+  replaceWithRecovery,
+} from "@/lib/storage/repository";
 
 export const BACKUP_APP_ID = "personal-fitness-tracker";
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 export const LARGE_FILE_WARNING_BYTES = 25 * 1024 * 1024;
 
 export const backupSchema = z
   .object({
     application: z.literal(BACKUP_APP_ID),
-    formatVersion: z.literal(BACKUP_VERSION),
+    formatVersion: z.union([z.literal(1), z.literal(2)]),
+    programs: z.array(personalProgramSchema).optional(),
+    recoveryCandidates: z
+      .array(
+        z
+          .object({
+            key: z.string(),
+            local: z.unknown().nullable(),
+            remote: z.unknown().nullable(),
+          })
+          .strict(),
+      )
+      .optional(),
     exportId: z.string().uuid(),
     exportedAt: timestampSchema,
     appVersion: z.string().min(1).max(100),
@@ -30,6 +47,8 @@ export const backupSchema = z
       .object({
         sessions: z.number().int().nonnegative(),
         drafts: z.number().int().min(0).max(1),
+        programs: z.number().int().nonnegative().optional(),
+        recoveryCandidates: z.number().int().nonnegative().optional(),
       })
       .strict(),
   })
@@ -53,7 +72,7 @@ function validateBackup(value: unknown): Backup {
     throw new BackupValidationError(
       "This file belongs to another application. Choose an exported fitness-tracker JSON backup.",
     );
-  if (header.formatVersion !== BACKUP_VERSION) {
+  if (header.formatVersion !== 1 && header.formatVersion !== BACKUP_VERSION) {
     if (
       typeof header.formatVersion === "number" &&
       header.formatVersion > BACKUP_VERSION
@@ -73,6 +92,39 @@ function validateBackup(value: unknown): Backup {
     );
   }
   const backup = result.data;
+  if (
+    backup.formatVersion === 1 &&
+    (backup.programs !== undefined ||
+      backup.recoveryCandidates !== undefined ||
+      backup.counts.programs !== undefined ||
+      backup.counts.recoveryCandidates !== undefined ||
+      backup.sessions.some((s) => s.snapshot.context) ||
+      backup.draft?.snapshot.context)
+  )
+    throw new BackupValidationError("Version 1 contains unsupported fields.");
+  if (
+    backup.formatVersion === 2 &&
+    (backup.programs === undefined ||
+      backup.recoveryCandidates === undefined ||
+      backup.counts.programs !== backup.programs.length ||
+      backup.counts.recoveryCandidates !== backup.recoveryCandidates.length)
+  )
+    throw new BackupValidationError(
+      "Version 2 programs/recovery counts do not match.",
+    );
+  if (
+    new Set((backup.programs ?? []).map((p) => p.definition.id)).size !==
+    (backup.programs ?? []).length
+  )
+    throw new BackupValidationError("Duplicate program IDs.");
+  for (const c of backup.recoveryCandidates ?? [])
+    for (const v of [c.local, c.remote])
+      if (v !== null) {
+        if (c.key.startsWith("session:")) assertSession(sessionSchema.parse(v));
+        else if (c.key.startsWith("program:")) personalProgramSchema.parse(v);
+        else if (c.key === "preferences:main") preferencesSchema.parse(v);
+        else throw new BackupValidationError("Unknown recovery candidate kind");
+      }
   if (
     backup.counts.sessions !== backup.sessions.length ||
     backup.counts.drafts !== Number(backup.draft !== null)
@@ -139,19 +191,23 @@ export function createBackup(
     formatVersion: BACKUP_VERSION,
     exportId: crypto.randomUUID(),
     exportedAt,
-    appVersion: "1.0.0",
+    appVersion: "2.0.0",
+    programs: structuredClone(dataset.programs ?? []),
+    recoveryCandidates: structuredClone(dataset.recoveryCandidates ?? []),
     preferences: structuredClone(dataset.preferences),
     sessions: structuredClone(dataset.sessions),
     draft: structuredClone(dataset.draft),
     counts: {
       sessions: dataset.sessions.length,
       drafts: Number(dataset.draft !== null),
+      programs: (dataset.programs ?? []).length,
+      recoveryCandidates: (dataset.recoveryCandidates ?? []).length,
     },
   });
 }
 
 export async function captureBackup(): Promise<Backup> {
-  return createBackup(await loadDataset());
+  return createBackup(await loadExportDataset());
 }
 export function serializeBackup(backup: Backup): string {
   return JSON.stringify(backup, null, 2);
@@ -214,22 +270,8 @@ export interface ImportPreview {
   exportedAt: string;
 }
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(
-          ([key]) => !["revision", "updatedAt", "createdAt"].includes(key),
-        )
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, child]) => [key, canonical(child)]),
-    );
-  }
-  return value;
-}
 export function equivalentSession(a: Session, b: Session): boolean {
-  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+  return canonicalContent(a) === canonicalContent(b);
 }
 
 export function previewImport(
@@ -259,7 +301,7 @@ export function previewImport(
         revision: (existing?.revision ?? 0) + 1,
       });
     } else if (!existing) {
-      merged.set(imported.id, { ...structuredClone(imported), revision: 1 });
+      merged.set(imported.id, structuredClone(imported));
     } else if (!equivalentSession(existing, imported)) {
       const choice = options.sessionChoices?.[imported.id] ?? "local";
       conflicts.push({ id: imported.id, local: existing, imported, choice });
@@ -317,6 +359,39 @@ export function previewImport(
     revision: local.revision,
     sessions: [...merged.values()],
     preferences,
+    programs:
+      options.mode === "replace"
+        ? (backup.programs ?? [])
+        : [
+            ...new Map([
+              ...(backup.programs ?? []).map(
+                (p) => [p.definition.id, p] as const,
+              ),
+              ...(local.programs ?? []).map((p) => {
+                const v = personalProgramSchema.parse(p);
+                return [v.definition.id, v] as const;
+              }),
+            ]).values(),
+          ],
+    recoveryCandidates: [
+      ...(options.mode === "replace" ? [] : (local.recoveryCandidates ?? [])),
+      ...(backup.recoveryCandidates ?? []),
+      ...(backup.programs ?? []).flatMap((p) => {
+        const localProgram = (local.programs ?? [])
+          .map((x) => personalProgramSchema.parse(x))
+          .find((x) => x.definition.id === p.definition.id);
+        return localProgram &&
+          canonicalContent(localProgram) !== canonicalContent(p)
+          ? [
+              {
+                key: "program:" + p.definition.id,
+                local: localProgram,
+                remote: p,
+              },
+            ]
+          : [];
+      }),
+    ],
     draft,
   };
   assertDataset(candidate);

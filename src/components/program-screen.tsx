@@ -1,4 +1,5 @@
 "use client";
+import { personalProgramSchema } from "@/domain/programs";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -22,13 +23,22 @@ export function ProgramScreen({ program }: { program: Program }) {
     [warning, setWarning] = useState(false),
     [invalid, setInvalid] = useState(""),
     [checkTime, setCheckTime] = useState(() => Date.now());
+  const isBaseline = program.id === "beginner-conditioning";
   const recovery = recoveryActivity(
     app.data.sessions,
     app.data.draft,
     checkTime,
     program.id,
   );
-  const seconds = rest ?? String(app.data.preferences.defaultRestSeconds);
+  const personal = (app.data.programs ?? [])
+    .map((p) => personalProgramSchema.parse(p))
+    .find((p) => p.definition.id === program.id);
+  const seconds =
+    rest ??
+    String(
+      personal?.definition.templates[0].defaultRestSeconds ??
+        app.data.preferences.defaultRestSeconds,
+    );
   const stats = summarize(app.data.sessions, { programId: program.id });
   const begin = async () => {
     setInvalid("");
@@ -58,7 +68,14 @@ export function ProgramScreen({ program }: { program: Program }) {
           <section className="card">
             <div className="section-head">
               <h2>The routine</h2>
-              <Badge tone="mint">6 exercises · 18 sets</Badge>
+              <Badge tone="mint">
+                {program.templates[0].exercises.length} exercises ·{" "}
+                {program.templates[0].exercises.reduce(
+                  (n, e) => n + e.sets.length,
+                  0,
+                )}{" "}
+                sets
+              </Badge>
             </div>
             {program.templates[0].exercises.map((ex, i) => (
               <div className="exercise-row" key={ex.id}>
@@ -68,7 +85,8 @@ export function ProgramScreen({ program }: { program: Program }) {
                 <div>
                   <h3>{ex.name}</h3>
                   <div className="prescription">
-                    {ex.sets.length} sets · {targetLabel(ex.sets[0].target)}
+                    {ex.sets.length} sets ·{" "}
+                    {ex.sets.map((s) => targetLabel(s.target)).join(" / ")}
                   </div>
                   <p>{ex.instructions}</p>
                 </div>
@@ -94,8 +112,7 @@ export function ProgramScreen({ program }: { program: Program }) {
                 />
               </label>
               <p className="small" style={{ margin: "8px 0 20px" }}>
-                App default: 90 seconds. Your mentor did not prescribe an exact
-                rest duration.
+                Initial app default: 90 seconds. This is an app setting.
               </p>
               {invalid && <ErrorText>{invalid}</ErrorText>}
               {app.data.draft ? (
@@ -122,7 +139,8 @@ export function ProgramScreen({ program }: { program: Program }) {
                         app.data.draft,
                         now,
                         program.id,
-                      ).warning
+                      ).warning &&
+                      isBaseline
                     )
                       setWarning(true);
                     else void begin();

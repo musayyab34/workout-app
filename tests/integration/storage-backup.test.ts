@@ -162,7 +162,7 @@ describe("backup validation and restoration", () => {
         JSON.stringify({
           ...backup,
           sessions: [...backup.sessions, backup.sessions[0]],
-          counts: { sessions: 2, drafts: 0 },
+          counts: { ...backup.counts, sessions: 2, drafts: 0 },
         }),
       ),
     ).toThrow("Duplicate");
@@ -196,7 +196,7 @@ describe("backup validation and restoration", () => {
       ),
     ).toThrow("later than the export");
   });
-  it("ignores local revision and update metadata when comparing equivalent sessions", () => {
+  it("ignores local revisions but preserves differences in timestamp metadata", () => {
     const original = partialSession();
     expect(
       equivalentSession(original, {
@@ -204,7 +204,7 @@ describe("backup validation and restoration", () => {
         revision: original.revision + 10,
         updatedAt: EXPORT,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
   it("merges repeated backups without duplicates", async () => {
     const backup = createBackup(datasetWith(partialSession()), EXPORT);

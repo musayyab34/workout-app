@@ -89,6 +89,16 @@ export const snapshotSchema = z
     templateId: idSchema,
     templateVersion: z.number().int().min(1),
     exercises: z.array(exerciseSchema).min(1),
+    context: z
+      .object({
+        programDescription: text,
+        guidance: z.array(text),
+        referenceUrl: z.string().url().nullable(),
+        templateName: z.string(),
+        source: z.enum(["bundled", "personalized", "custom"]),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export const setRecordSchema = z
@@ -178,6 +188,8 @@ export const datasetSchema = z
     sessions: z.array(sessionSchema),
     draft: draftSchema.nullable(),
     preferences: preferencesSchema,
+    programs: z.array(z.unknown()).optional(),
+    recoveryCandidates: z.array(z.unknown()).optional(),
   })
   .strict();
 export type Target = z.infer<typeof targetSchema>;

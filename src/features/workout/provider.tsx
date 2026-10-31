@@ -24,6 +24,8 @@ import {
 } from "./machine";
 import * as repository from "@/lib/storage/repository";
 
+import { workspaceGeneration } from "@/lib/storage/db";
+
 type Operation = (data: Dataset) => Promise<Dataset>;
 type Input = {
   sessionId: string;
@@ -70,6 +72,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [recovered, setRecovered] = useState(false),
     [notice, setNotice] = useState<string | null>(null),
     [editing, setEditing] = useState<Input | null>(null);
+  const workspace = useRef(workspaceGeneration);
   const dataRef = useRef(data),
     queue = useRef<Promise<unknown>>(Promise.resolve()),
     editRef = useRef<Input | null>(null),
@@ -91,6 +94,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!quiet) setPending((n) => n + 1);
       const task = async () => {
         try {
+          if (workspace.current !== workspaceGeneration || !live.current)
+            throw new Error(
+              "Workspace changed; reopen this action in its original account.",
+            );
           const next = await operation(dataRef.current);
           publish(next);
           setError(null);
@@ -129,6 +136,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const task = async () => {
       try {
+        if (workspace.current !== workspaceGeneration || !live.current) return;
         const next = await repository.loadDataset();
         if (next.revision !== dataRef.current.revision) {
           publish(next);
@@ -278,7 +286,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           throw new Error("Resume or finish the existing workout first.");
         return repository.saveDraft(
           current.revision,
-          createDraft(program, seconds, now),
+          (() => {
+            const draft = createDraft(program, seconds, now);
+            if (
+              draft.snapshot.context &&
+              (current.programs ?? []).some(
+                (p) =>
+                  (p as { definition: { id: string } }).definition.id ===
+                  program.id,
+              )
+            )
+              draft.snapshot.context.source =
+                program.id === "beginner-conditioning"
+                  ? "personalized"
+                  : "custom";
+            return draft;
+          })(),
         );
       });
     },

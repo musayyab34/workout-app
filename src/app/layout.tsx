@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { AppProvider } from "@/features/workout/provider";
+import { Runtime } from "@/features/auth/runtime";
 import { Shell } from "@/components/shell";
 import "./globals.css";
 export const metadata: Metadata = {
@@ -20,9 +20,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AppProvider>
+        <Runtime>
           <Shell>{children}</Shell>
-        </AppProvider>
+        </Runtime>
       </body>
     </html>
   );

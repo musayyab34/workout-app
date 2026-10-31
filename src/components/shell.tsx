@@ -1,4 +1,5 @@
 "use client";
+import { useAccount } from "@/features/auth/runtime";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -15,6 +16,7 @@ const nav = [
 export function Shell({ children }: { children: ReactNode }) {
   const path = usePathname(),
     app = useApp();
+  const account = useAccount();
   const workout = path.startsWith("/workout");
   const [rawError, setRawError] = useState("");
   const [rawLink, setRawLink] = useState<{
@@ -67,7 +69,9 @@ export function Shell({ children }: { children: ReactNode }) {
               {navItems}
             </nav>
           )}
-          <span className="local-indicator">PERSONAL. LOCAL. YOURS.</span>
+          <span className="local-indicator">
+            {account.owner ? account.status : "PERSONAL. LOCAL. YOURS."}
+          </span>
           {workout && (
             <span className="save-state">
               {app.busy ? "Saving…" : "On this device"}
@@ -143,7 +147,10 @@ export function Shell({ children }: { children: ReactNode }) {
         {!workout && (
           <p className="footer-note">
             <Icon name="lock" size={12} /> Stored on this browser. Back up your
-            progress in Settings.
+            progress in Settings.{" "}
+            {account.owner
+              ? "Saved workouts sync with your account; unfinished workouts stay here."
+              : "Sign in to synchronize saved workouts."}
           </p>
         )}
       </main>

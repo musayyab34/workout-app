@@ -66,6 +66,18 @@ export function createDraft(
     templateId: template.id,
     templateVersion: template.version,
     exercises: structuredClone(template.exercises),
+    context: {
+      programDescription: program.description,
+      guidance: structuredClone(program.guidance),
+      referenceUrl: program.referenceUrl,
+      templateName: template.name,
+      source:
+        program.id === "beginner-conditioning"
+          ? program.version === 1
+            ? "bundled"
+            : "personalized"
+          : "custom",
+    } as const,
   };
   const sets: SetRecord[] = snapshot.exercises.flatMap((exercise) =>
     exercise.sets.map((set) => ({

@@ -173,12 +173,14 @@ export function ExerciseChart({
 }
 export function WeeklyChart({
   weeks,
+  goal = 3,
 }: {
+  goal?: number | null;
   weeks: {
     startDate: string;
     completed: number;
     partial: number;
-    goal: number;
+    goal: number | null;
   }[];
 }) {
   const id = useId();
@@ -194,10 +196,12 @@ export function WeeklyChart({
     <div className="chart">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={id}>
         <title id={id}>
-          Weekly completed workouts. Approximate goal: three, with recovery
-          days.
+          Weekly completed workouts.{" "}
+          {goal
+            ? "Approximate goal: " + goal + ", with recovery days."
+            : "Your recorded consistency."}
         </title>
-        {[0, 3, max].map((n, i) => (
+        {[0, ...(goal ? [goal] : []), max].map((n, i) => (
           <g key={i}>
             <line
               x1={left}
@@ -205,7 +209,7 @@ export function WeeklyChart({
               y1={height - bottom - ((height - top - bottom) * n) / max}
               y2={height - bottom - ((height - top - bottom) * n) / max}
               className="chart-grid"
-              strokeDasharray={n === 3 ? "4 4" : undefined}
+              strokeDasharray={n === goal ? "4 4" : undefined}
             />
             <text
               x={left - 8}
@@ -251,7 +255,11 @@ export function WeeklyChart({
         ))}
       </svg>
       <p className="small">
-        Approximate goal: 3 per week. Always leave a recovery day.
+        {goal
+          ? "Approximate goal: " +
+            goal +
+            " per week. Always leave a recovery day."
+          : "Completed and partial sessions are shown separately."}
       </p>
       <details>
         <summary>View weekly data</summary>

@@ -21,7 +21,7 @@ test.afterEach(({ page }) => {
 
 async function stored(page: Page) {
   return page.evaluate(async () => {
-    const request = indexedDB.open("fitness-tracker");
+    const request = indexedDB.open("fitness-tracker-v2:local");
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -88,15 +88,13 @@ async function exportedBackup(page: Page): Promise<Buffer> {
 }
 
 async function selectBackup(page: Page, backup: Buffer | Backup) {
-  await page
-    .getByLabel("Backup JSON file", { exact: true })
-    .setInputFiles({
-      name: "backup.json",
-      mimeType: "application/json",
-      buffer: Buffer.isBuffer(backup)
-        ? backup
-        : Buffer.from(JSON.stringify(backup)),
-    });
+  await page.getByLabel("Backup JSON file", { exact: true }).setInputFiles({
+    name: "backup.json",
+    mimeType: "application/json",
+    buffer: Buffer.isBuffer(backup)
+      ? backup
+      : Buffer.from(JSON.stringify(backup)),
+  });
   await expect(
     page.getByRole("heading", { name: "Review import", exact: true }),
   ).toBeVisible();
@@ -395,7 +393,7 @@ test("resolves merge conflicts, replaces data, and restores the pre-import copy"
     ...backup,
     sessions: [],
     draft: null,
-    counts: { sessions: 0, drafts: 0 },
+    counts: { ...backup.counts, sessions: 0, drafts: 0 },
   };
   await selectBackup(page, empty);
   await page.getByLabel("Import mode", { exact: true }).selectOption("replace");
@@ -530,13 +528,11 @@ test("keeps history and exercise charts usable with 5000 sessions", async ({
   });
   backup.counts.sessions = 5000;
   const bytes = Buffer.from(JSON.stringify(backup));
-  await page
-    .getByLabel("Backup JSON file", { exact: true })
-    .setInputFiles({
-      name: "large-backup.json",
-      mimeType: "application/json",
-      buffer: bytes,
-    });
+  await page.getByLabel("Backup JSON file", { exact: true }).setInputFiles({
+    name: "large-backup.json",
+    mimeType: "application/json",
+    buffer: bytes,
+  });
   if (bytes.length > 25 * 1024 * 1024)
     await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(

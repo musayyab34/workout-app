@@ -1,6 +1,14 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
-export const DATABASE_NAME = "fitness-tracker";
+export let DATABASE_NAME = "fitness-tracker";
+export let workspaceGeneration = 0;
+export let accountWorkspace = false;
+export async function selectWorkspace(name: string, account: boolean) {
+  await closeFitnessDatabase();
+  DATABASE_NAME = name;
+  accountWorkspace = account;
+  workspaceGeneration++;
+}
 export const DATABASE_VERSION = 1;
 
 export interface FitnessDatabase extends DBSchema {

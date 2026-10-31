@@ -1,7 +1,9 @@
 "use client";
+import { resolvedPrograms, personalProgramSchema } from "@/domain/programs";
+
 import { useState } from "react";
 import { useApp } from "@/features/workout/provider";
-import { conditioningProgram, programs } from "@/programs/catalog";
+import { conditioningProgram } from "@/programs/catalog";
 import {
   summarize,
   weeklyConsistency,
@@ -19,10 +21,14 @@ import { Calendar } from "@/components/history";
 import { ExerciseChart, WeeklyChart } from "@/components/charts";
 export default function Progress() {
   const app = useApp();
+  const programs = resolvedPrograms(
+    (app.data.programs ?? []).map((p) => personalProgramSchema.parse(p)),
+  );
   const [program, setProgram] = useState(conditioningProgram.id),
     [exercise, setExercise] = useState("push-ups"),
     [mode, setMode] = useState<ChartMode>("best"),
-    [range, setRange] = useState("12");
+    [range, setRange] = useState("12"),
+    [entry, setEntry] = useState("");
   const allPrograms = listPrograms(
     app.data.sessions,
     programs.filter((p) => p.availability === "active"),
@@ -41,10 +47,36 @@ export default function Progress() {
     range === "all"
       ? undefined
       : addCalendarDays(localDateKey(), -7 * Number(range) + 1);
+  const entries = Array.from(
+    new Map(
+      selected.flatMap((s) =>
+        s.snapshot.exercises
+          .filter((e) => e.exerciseId === current?.id)
+          .map(
+            (e) =>
+              [
+                e.id + ":" + e.sets.length,
+                { id: e.id, count: e.sets.length, name: e.name },
+              ] as const,
+          ),
+      ),
+    ).entries(),
+  );
+  const selection = entries.find(([key]) => key === entry)?.[1];
   const points = current
-    ? exerciseProgress(selected, current.id, { mode, fromDate })
+    ? exerciseProgress(selected, current.id, {
+        mode,
+        fromDate,
+        entryId: selection?.id,
+        setCount: selection?.count,
+      })
     : [];
-  const records = current ? exerciseRecords(selected, current.id) : null;
+  const records = current
+    ? exerciseRecords(selected, current.id, {
+        entryId: selection?.id,
+        setCount: selection?.count,
+      })
+    : null;
   if (!app.ready)
     return (
       <>
@@ -84,7 +116,13 @@ export default function Progress() {
         />
         <Stat
           label="Completed this week"
-          value={app.ready ? `${stats.thisWeek} / ~3` : "—"}
+          value={
+            app.ready
+              ? program === "beginner-conditioning"
+                ? `${stats.thisWeek} / ~3`
+                : stats.thisWeek
+              : "—"
+          }
           detail="Monday through Sunday"
         />
         <Stat
@@ -109,7 +147,10 @@ export default function Progress() {
               <h2>Weekly consistency</h2>
               <Icon name="chart" size={18} />
             </div>
-            <WeeklyChart weeks={weeklyConsistency(selected, { weeks: 12 })} />
+            <WeeklyChart
+              goal={program === "beginner-conditioning" ? 3 : null}
+              weeks={weeklyConsistency(selected, { weeks: 12 })}
+            />
           </section>
           <section className="card">
             <div className="section-head">
@@ -147,6 +188,21 @@ export default function Progress() {
                 <option value="all">All time</option>
               </select>
             </div>
+            <label className="field">
+              Comparable exercise entry / set count
+              <select value={entry} onChange={(e) => setEntry(e.target.value)}>
+                <option value="">All entries (best-set movement view)</option>
+                {entries.map(([key, e]) => (
+                  <option key={key} value={key}>
+                    {e.name} · {e.count} sets · entry {e.id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="small">
+              Full-entry totals and Set 1 require a comparable entry. Changing
+              set count changes the comparison.
+            </p>
             <ExerciseChart
               points={points}
               label={
@@ -182,7 +238,9 @@ export default function Progress() {
               </strong>
             </div>
             <div className="setting-row">
-              <span className="small muted">Best full exercise</span>
+              <span className="small muted">
+                Best full exercise ({records?.comparisonSetCount ?? "—"} sets)
+              </span>
               <strong>
                 {records?.bestTotal?.value ?? "—"}{" "}
                 {records?.bestTotal ? "reps" : ""}
@@ -210,8 +268,8 @@ export default function Progress() {
             <p className="small">
               {stats.attainment.credited} credited /{" "}
               {stats.attainment.prescribed} prescribed reps across saved
-              sessions. Each set is capped at its own target. Push-ups and
-              tibialis raises have qualitative targets and are excluded.
+              sessions. Each set is capped at its own target. Qualitative
+              targets are excluded.
             </p>
           </section>
         </aside>

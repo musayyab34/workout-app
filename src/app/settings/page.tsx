@@ -1,4 +1,7 @@
 "use client";
+import { AccountPanel } from "@/components/account-panel";
+import { useAccount } from "@/features/auth/runtime";
+import { applyAccountImport } from "@/features/sync/import";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dataset, Preferences } from "@/domain/schemas";
 import { useApp } from "@/features/workout/provider";
@@ -35,6 +38,8 @@ import {
 } from "@/components/ui";
 export default function Settings() {
   const app = useApp();
+  const account = useAccount();
+  const [restoreDeleted, setRestoreDeleted] = useState(false);
   const [rest, setRest] = useState<string | null>(null),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -169,7 +174,18 @@ export default function Settings() {
   const apply = async (selected: ImportPreview) => {
     setConfirm(null);
     setProcessing(true);
-    const ok = await app.mutate(() => applyImport(selected));
+    const ok = await app.mutate(async () => {
+      if (account.owner) {
+        const next = await applyAccountImport(
+          selected,
+          account.owner,
+          restoreDeleted,
+        );
+        if (!next) throw new Error("Import not completed");
+        return next;
+      }
+      return applyImport(selected);
+    });
     if (ok) {
       setMessage(
         `Import complete. ${selected.candidate.sessions.length} saved sessions are now on this browser. A pre-import recovery copy is available below.`,
@@ -196,6 +212,18 @@ export default function Settings() {
       >
         Simple preferences and a safe place for your progress.
       </PageHeading>
+      <AccountPanel />
+      {account.owner && backup && (
+        <label className="card">
+          <input
+            type="checkbox"
+            checked={restoreDeleted}
+            onChange={(e) => setRestoreDeleted(e.target.checked)}
+          />{" "}
+          Explicitly restore deleted account sessions found in this backup.
+          These will reappear on other devices.
+        </label>
+      )}
       {message && (
         <div className="notice" role="status">
           <p>{message}</p>
@@ -425,7 +453,9 @@ export default function Settings() {
                 }
               >
                 <option value="merge">Merge with local records</option>
-                <option value="replace">Replace local records</option>
+                <option disabled={!!account.owner} value="replace">
+                  Replace local records
+                </option>
               </select>
             </label>
             {options.mode === "merge" && (

@@ -1,13 +1,8 @@
-import { notFound } from "next/navigation";
-import { getProgram } from "@/programs/catalog";
-import { ProgramScreen } from "@/components/program-screen";
-export default async function ProgramPage({
+import { ProgramResolver } from "@/components/program-resolver";
+export default async function Page({
   params,
 }: {
   params: Promise<{ programId: string }>;
 }) {
-  const { programId } = await params;
-  const program = getProgram(programId);
-  if (!program) notFound();
-  return <ProgramScreen program={program} />;
+  return <ProgramResolver id={(await params).programId} />;
 }

@@ -276,11 +276,21 @@ export type ExercisePoint = {
 export function exerciseProgress(
   sessions: readonly Session[],
   exerciseId: string,
-  options: StatisticsFilter & { mode?: ChartMode } = {},
+  options: StatisticsFilter & {
+    mode?: ChartMode;
+    entryId?: string;
+    setCount?: number;
+  } = {},
 ): ExercisePoint[] {
   const mode = options.mode ?? "best";
   return chronological(filterSessions(sessions, options)).flatMap((session) => {
-    const sets = session.sets.filter((set) => set.exerciseId === exerciseId);
+    const sets = session.sets.filter(
+      (set) =>
+        set.exerciseId === exerciseId &&
+        (!options.entryId || set.exerciseEntryId === options.entryId),
+    );
+    if (options.setCount !== undefined && sets.length !== options.setCount)
+      return [];
     if (!sets.length) return [];
     const recorded = sets.filter((set) => set.status === "recorded");
     const total = actualRepetitions(sets);
@@ -289,9 +299,17 @@ export function exerciseProgress(
     if (mode === "best" && recorded.length)
       value = Math.max(...recorded.map((set) => set.actualReps ?? 0));
     else if (mode === "set1") {
-      const first = sets.find((set) => set.setNumber === 1);
+      const first =
+        new Set(sets.map((s) => s.exerciseEntryId)).size === 1
+          ? sets.find((set) => set.setNumber === 1)
+          : undefined;
       if (first?.status === "recorded") value = first.actualReps;
-    } else if (mode === "total" && fullExercise) value = total;
+    } else if (
+      mode === "total" &&
+      fullExercise &&
+      new Set(sets.map((s) => s.exerciseEntryId)).size === 1
+    )
+      value = total;
     const targets = [
       ...new Set(
         sets.map((set) =>
@@ -325,7 +343,7 @@ export function exerciseProgress(
 export function exerciseRecords(
   sessions: readonly Session[],
   exerciseId: string,
-  options: StatisticsFilter = {},
+  options: StatisticsFilter & { entryId?: string; setCount?: number } = {},
 ) {
   const bestPoints = exerciseProgress(sessions, exerciseId, {
     ...options,
@@ -346,7 +364,14 @@ export function exerciseRecords(
     );
   return {
     bestSet: best(bestPoints),
-    bestTotal: best(totalPoints),
+    bestTotal: best(
+      totalPoints.filter(
+        (p) =>
+          p.values.length ===
+          (options.setCount ?? totalPoints.at(-1)?.values.length),
+      ),
+    ),
+    comparisonSetCount: options.setCount ?? totalPoints.at(-1)?.values.length,
     totalReps: bestPoints.reduce((sum, point) => sum + point.total, 0),
     sessions: bestPoints.length,
   };

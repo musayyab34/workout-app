@@ -1,0 +1,12 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select plan(7);
+select ok((select bool_and(relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in ('account_sync_state','workout_sessions','workout_programs','account_preferences','sync_mutations','import_batches','import_items')), 'all application tables enable RLS');
+select ok(not has_table_privilege('authenticated','public.workout_sessions','INSERT,UPDATE,DELETE'),'authenticated clients cannot bypass session RPC');
+select ok(not has_function_privilege('anon','public.form_mutate(jsonb)','EXECUTE'),'anonymous mutations denied');
+select ok(has_function_privilege('authenticated','public.form_mutate(jsonb)','EXECUTE'),'authenticated mutation RPC available');
+select ok(not has_schema_privilege('authenticated','private','USAGE'),'private validators and staged documents are inaccessible');
+select is((select count(*)::integer from pg_policies where schemaname='public' and policyname='own_rows'),7,'all public tables have owner read policies');
+select ok(not has_table_privilege('anon','public.workout_sessions','SELECT'),'anonymous history reads denied');
+select * from finish();
+rollback;
